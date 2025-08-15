@@ -24,7 +24,7 @@ jobs:
     
     # Publish the site
     - name: Publish
-      run: dotnet publish PatSite.sln -c:Release -o:publish -p:GHPages=true
+      run: dotnet publish BallsBlazor.sln -c:Release -o:publish -p:GHPages=true
     
     # Deploy the site
     - name: Deploy
