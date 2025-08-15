@@ -1,0 +1,418 @@
+﻿@page "/"
+
+@using AvnCanvasHelper;
+@using Blazor.Extensions
+@using Blazor.Extensions.Canvas
+@using Blazor.Extensions.Canvas.Canvas2D
+@using BallsBlazor.Core.Infrastructure
+@using BallsBlazor.Core.Environment
+@using BallsBlazor.Core.Infrastructure.Models
+@using System.Drawing;
+
+<section class="main">
+    <div class="wrapper">
+        <div class="user-input-wrapper">
+            <div class="sliders">
+                <div>
+                    <label>Time Step</label>
+                    <input type="range" min="0.1" max="10" step="0.1" @bind="EnvironmentalVariables.TimeStep" @bind:event="oninput"/>
+                    <span>@EnvironmentalVariables.TimeStep.ToString("F1")</span>
+                </div>
+                <div>
+                    <label>Min Speed</label>
+                    <input type="range" min="1" max="10" step="1" @bind="EnvironmentalVariables.MinimumSpeed" @bind:event="oninput"/>
+                    <span>@EnvironmentalVariables.MinimumSpeed.ToString("F0")</span>
+                </div>
+                <div>
+                    <label>Max Speed</label>
+                    <input type="range" min="10" max="99" step="1" @bind="EnvironmentalVariables.MaximumSpeed" @bind:event="oninput"/>
+                    <span>@EnvironmentalVariables.MaximumSpeed.ToString("F0")</span>
+                </div>
+                <div>
+                    <label>Wall Elasticity</label>
+                    <input type="range" min="0" max="1" step="0.01" @bind="EnvironmentalVariables.WallElasticity" @bind:event="oninput"/>
+                    <span>@EnvironmentalVariables.WallElasticity.ToString("F2")</span>
+                </div>
+                <div>
+                    <label>Air Resistance</label>
+                    <input type="range" min="0" max="0.0001" step="0.0000001" @bind="EnvironmentalVariables.AirResistance" @bind:event="oninput"/>
+                    <span>@EnvironmentalVariables.AirResistance.ToString("E2")</span>
+                </div>
+                <div>
+                    <label>Gravity</label>
+                    <input type="range" min="0" max="10" step="0.1" @bind="EnvironmentalVariables.GravitationalStrength" @bind:event="oninput"/>
+                    <span>@EnvironmentalVariables.GravitationalStrength.ToString("F1")</span>
+                </div>
+            </div>
+
+            <div class="buttons">
+                <button @onclick="ClearBalls">Clear All Balls</button>
+                <button @onclick="Pause">@PauseText</button>
+                <button @onclick="AddBall">Add Random Ball</button>
+            </div>
+        </div>
+        
+        <div class="canvas-wrapper">
+            <CanvasHelper @ref="_canvasHelper"
+                          CanvasResized="CanvasResized"
+                          RenderFrame="RenderFrame"
+                          MouseDown="MouseDown"
+                          MouseUp="MouseUp"
+                          MouseMove="MouseMove">
+                <BECanvas @ref="_canvasReference"></BECanvas>
+            </CanvasHelper>
+        </div>
+    </div>
+</section>
+
+
+@code {
+    public string DisplayGravitationalStrength
+    {
+        get
+        {
+            return string.Format("{0:0.0}", EnvironmentalVariables.GravitationalStrength);
+        }
+    }
+
+    private readonly Ballfield _ballfield = new Ballfield();
+    private Canvas2DContext _canvasContext;
+    private BECanvasComponent _canvasReference;
+    private CanvasHelper _canvasHelper;
+    private double _fps;
+
+    
+
+    private int NumberOfBalls => _ballfield.Balls.Count;
+    private static string PauseText => EnvironmentalVariables.IsPaused ? "Resume" : "Pause";
+    
+    protected override void OnInitialized()
+    {
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        int initalNumberOfBalls = 10;
+
+        if (firstRender)
+        {
+            // Create the canvas and context
+            _canvasContext = await _canvasReference.CreateCanvas2DAsync();
+
+            // Initialize the helper
+            await _canvasHelper.Initialize();
+
+            for (var i = 0; i < initalNumberOfBalls; i++)
+            {
+                _ballfield.AddRandmBall();
+
+                _touchedBalls.Add(-1);
+                _touchX.Add(0);
+                _touchXAfter.Add(0);
+                _touchY.Add(0);
+                _touchYAfter.Add(0);
+            }
+        }
+    }
+
+    public async Task RenderFrame(double fps)
+    {
+        if (EnvironmentalVariables.IsPaused)
+        {
+            return;
+        }
+        
+        _fps = fps;
+
+        await UpdateBackground();
+
+        PerformMainCalculations();
+
+        await DrawBalls();
+
+        await ClearOutterBackground();
+
+    }
+
+    // needs moving to core
+    #region Phsyics
+    
+    private List<int> _touchedBalls = [];
+    private List<int> _touchX = [];
+    private List<int> _touchY = [];
+    private List<int> _touchXAfter = [];
+    private List<int> _touchYAfter = [];
+
+    private double _deltaT = 0.1;
+
+    private double _deviceTiltX = 0;
+    private double _deviceTiltY = 0.1;
+    
+    private void CalculateTouchedBalls()
+    {
+        // Physics for touched balls
+        for (var i = 0; i < _touchedBalls.Count; i++)
+        {
+            if (_touchedBalls[i] < 0)
+                continue;
+
+            _touchXAfter[i] = _touchX[i];
+            _touchYAfter[i] = _touchY[i];
+
+            var ball = _ballfield.Balls[i];
+
+            if (ball.Mode != 1)
+            {
+                var factor = -0.5 / this._deltaT / 10.0;
+
+                ball.Velocity.X = factor * (ball.X - _touchXAfter[i]);
+                ball.Velocity.Y = factor * (ball.Y - _touchYAfter[i]);
+            }
+            else
+            {
+                ball.X = _touchX[i];
+                ball.Y = _touchY[i];
+            }
+        }
+
+    }
+
+    private void PerformMainCalculations()
+    {
+        CalculateTouchedBalls();
+
+        // Main physics
+        for (int t = 0; t < EnvironmentalVariables.TimeStep; t++)
+        {
+            for (int i = 0; i < NumberOfBalls; i++)
+            {
+                Ball currentBall = _ballfield.Balls[i];
+
+                if (currentBall.Mode != 1)
+                {
+                    currentBall.X += currentBall.Velocity.X * _deltaT;
+                    currentBall.Y += currentBall.Velocity.Y * _deltaT;
+
+                    currentBall.Velocity.X -= currentBall.Velocity.X * EnvironmentalVariables.AirResistance;
+                    currentBall.Velocity.Y -= currentBall.Velocity.Y * EnvironmentalVariables.AirResistance;
+
+                    ReflectOffWalls(currentBall);
+                }
+                else
+                {
+                    currentBall.Velocity.X = 0;
+                    currentBall.Velocity.Y = 0;
+                }
+
+                ApplyBallInteractions(i);
+            }
+
+            BallPhysics.CheckDistance(_ballfield);
+        }
+
+        CalculateGravity();
+    }
+
+    void ReflectOffWalls(Ball currentBall)
+    {
+        if (currentBall.X + currentBall.Radius > _ballfield.Width)
+        {
+            currentBall.Velocity.X *= -EnvironmentalVariables.WallElasticity;
+            currentBall.X = _ballfield.Width - currentBall.Radius;
+        }
+        else if (currentBall.X - currentBall.Radius < 0)
+        {
+            currentBall.Velocity.X *= -EnvironmentalVariables.WallElasticity;
+            currentBall.X = currentBall.Radius;
+        }
+
+        if (currentBall.Y + currentBall.Radius > _ballfield.Height)
+        {
+            currentBall.Velocity.Y *= -EnvironmentalVariables.WallElasticity;
+            currentBall.Y = _ballfield.Height - currentBall.Radius;
+        }
+        else if (currentBall.Y - currentBall.Radius < 0)
+        {
+            currentBall.Velocity.Y *= -EnvironmentalVariables.WallElasticity;
+            currentBall.Y = currentBall.Radius;
+        }
+    }
+
+    void ApplyBallInteractions(int i)
+    {
+        Ball currentBall = _ballfield.Balls[i];
+
+        if (currentBall.Mode == 3 && i != 0)
+        {
+            Ball previousBall = _ballfield.Balls[i - 1];
+            CalculateAndApplyInteraction(currentBall, previousBall);
+        }
+
+        if (currentBall.Mode != 1 && i != NumberOfBalls - 1 && _ballfield.Balls[i + 1].Mode == 3)
+        {
+            // Interaction with the next ball
+            Ball nextBall = _ballfield.Balls[i + 1];
+            CalculateAndApplyInteraction(currentBall, nextBall);
+        }
+    }
+
+    // Function to calculate and apply interactions between two balls
+    static void CalculateAndApplyInteraction(Ball ball1, Ball ball2)
+    {
+        double deltaX = ball1.X - ball2.X;
+        double deltaY = ball1.Y - ball2.Y;
+
+        ball1.Velocity.X -= 0.3 / ball1.Radius * (deltaX - 2 * ball1.Radius * deltaX / Math.Sqrt(deltaX * deltaX + deltaY * deltaY));
+        ball1.Velocity.Y -= 0.3 / ball1.Radius * (deltaY - 2 * ball1.Radius * deltaY / Math.Sqrt(deltaX * deltaX + deltaY * deltaY));
+    }
+
+    private void CalculateGravity()
+    {
+        var gravitationalForceX = _deviceTiltX * EnvironmentalVariables.GravitationalStrength;
+        var gravitationalForceY = _deviceTiltY * EnvironmentalVariables.GravitationalStrength;
+
+        for (var i = 0; i < NumberOfBalls; i++)
+        {
+            if (_ballfield.Balls[i].Mode == 1) continue;
+            
+            _ballfield.Balls[i].Velocity.X += gravitationalForceX;
+            _ballfield.Balls[i].Velocity.Y += gravitationalForceY;
+        }
+    }
+
+    private void DoAccelerometer(Acceleration a)
+    {
+        this._deviceTiltX = -0.1 * a.X;
+        this._deviceTiltY = 0.1 * a.Y;
+    }
+    #endregion
+
+    #region CanvasMethods
+    private async Task UpdateBackground()
+    {
+        await this._canvasContext.BeginBatchAsync();
+
+        await this._canvasContext.ClearRectAsync(0, 0, _ballfield.Width, _ballfield.Height);
+        await this._canvasContext.SetFillStyleAsync("#003366");
+        await this._canvasContext.FillRectAsync(0, 0, _ballfield.Width, _ballfield.Height);
+        await this._canvasContext.SetFillStyleAsync("#FFFFFF");
+        await this._canvasContext.SetFontAsync("16px consolas");
+        await this._canvasContext.FillTextAsync($"FPS: {_fps:0}", _ballfield.Width - 100, 15);
+
+        await this._canvasContext.EndBatchAsync();
+    }
+
+    private async Task ClearOutterBackground()
+    {
+        await this._canvasContext.BeginBatchAsync();
+
+        await this._canvasContext.ClearRectAsync(_ballfield.Width, _ballfield.Height, -_ballfield.Width, 100);
+        await this._canvasContext.ClearRectAsync(_ballfield.Width, _ballfield.Height, 100, -_ballfield.Height);
+        await this._canvasContext.ClearRectAsync(_ballfield.Width, _ballfield.Height, 100, 100);
+
+        await this._canvasContext.EndBatchAsync();
+    }
+
+    /// <summary>
+    /// Called by CanvasHelper whenever the browser is resized.
+    /// </summary>
+    /// <param name="size"></param>
+    public void CanvasResized(Size size)
+    {
+        _ballfield.Resize(size.Width, size.Height);
+    }
+
+    // Handle mouse down events
+    void MouseDown(CanvasMouseArgs args)
+    {
+
+    }
+
+    // Handle mouse up events
+    void MouseUp(CanvasMouseArgs args)
+    {
+
+    }
+
+    // Handle mouse move events
+    void MouseMove(CanvasMouseArgs args)
+    {
+
+    }
+    #endregion
+
+    #region BallsMethods
+    public async Task DrawBalls()
+    {
+        for (var i = 0; i < NumberOfBalls; i++)
+        {
+            Ball currentBall = _ballfield.Balls[i];
+
+            switch (currentBall.Mode)
+            {
+                case 0:
+                    await DrawBall(currentBall);
+                    break;
+                case 1:
+                    await DrawBall(currentBall);
+                    break;
+                case 2: //Add support of different balls
+                    await DrawBall(currentBall);
+                    //if (i != 0)
+                    //{
+                    //
+                    //
+                    //}
+                    break;
+                case 3:
+                    await DrawBall(currentBall);
+                    //if (i != 0)
+                    //{
+                    //
+                    //
+                    //}
+                    break;
+            }
+        }
+    }
+
+    private async Task DrawBall(Ball ball)
+    {
+        await this._canvasContext.BeginBatchAsync();
+
+        await this._canvasContext.SetStrokeStyleAsync(ball.Color); // contour
+        await this._canvasContext.BeginPathAsync();
+        await this._canvasContext.ArcAsync(ball.X, ball.Y, ball.Radius, 0, 2 * Math.PI);
+        await this._canvasContext.SetFillStyleAsync(ball.Color); // fill
+        await this._canvasContext.FillAsync();
+
+        await this._canvasContext.StrokeAsync();
+
+        await this._canvasContext.EndBatchAsync();
+    }
+
+    private void ClearBalls()
+    {
+        _ballfield.Balls.Clear();
+        _touchX.Clear();
+        _touchXAfter.Clear();
+        _touchY.Clear();
+        _touchYAfter.Clear();
+    }
+    
+    private void Pause()
+    {
+        EnvironmentalVariables.IsPaused = !EnvironmentalVariables.IsPaused;
+    }
+
+    private void AddBall()
+    {
+        _ballfield.AddRandmBall();
+
+        _touchX.Add(0);
+        _touchXAfter.Add(0);
+        _touchY.Add(0);
+        _touchYAfter.Add(0);
+    }
+    #endregion
+}
