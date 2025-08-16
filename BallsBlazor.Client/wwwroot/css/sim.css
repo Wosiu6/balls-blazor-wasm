@@ -198,12 +198,12 @@
 
 /* When collapsed - position at top middle of screen */
 .user-input-wrapper.collapsed .show-user-input-wrapper {
-    top: 0px !important;
+    top: 5px !important;
 }
 
 /* When expanded - position at bottom border of menu */
 .user-input-wrapper.shown .show-user-input-wrapper {
-    top: calc(100% + 0px) !important;
+    top: calc(100% + 5px) !important;
     position: absolute !important;
     left: 50% !important;
     transform: translateX(-50%) !important;
@@ -320,5 +320,12 @@
         height: 30px;
         font-size: 16px;
         border-radius: 15px;
+    }
+
+    .user-input-wrapper.shown .show-user-input-wrapper {
+        top: calc(100% - 35px) !important;
+        position: absolute !important;
+        left: 90% !important;
+        transform: translateX(-50%) !important;
     }
 }
