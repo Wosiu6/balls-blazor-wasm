@@ -1,5 +1,3 @@
-Here's a more concise and straightforward Markdown version:
-
 # Bouncing Balls Simulation
 
 This project is a **physical simulation of bouncing balls**, built with **C\#** and a **Blazor WebAssembly** frontend. It provides an interactive environment to observe ball collisions and rebounds. You can adjust various settings to see how they impact the simulation.
