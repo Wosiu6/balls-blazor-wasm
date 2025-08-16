@@ -7,11 +7,12 @@
 @using BallsBlazor.Core.Infrastructure
 @using BallsBlazor.Core.Environment
 @using BallsBlazor.Core.Infrastructure.Models
+@using BallsBlazor.Core.Infrastructure.Services
 @using System.Drawing;
 
 <section class="main">
     <div class="wrapper">
-        <div class="user-input-wrapper">
+        <div class="user-input-wrapper @(_userInputHidden ? "user-input collapsed" : "user-input shown")">
             <div class="sliders">
                 <div>
                     <label>Time Step</label>
@@ -41,7 +42,7 @@
                 <div>
                     <label>Gravity</label>
                     <input type="range" min="0" max="10" step="0.1" @bind="EnvironmentalVariables.GravitationalStrength" @bind:event="oninput"/>
-                    <span>@EnvironmentalVariables.GravitationalStrength.ToString("F1")</span>
+                    <span>@DisplayGravitationalStrength</span>
                 </div>
             </div>
 
@@ -49,6 +50,12 @@
                 <button @onclick="ClearBalls">Clear All Balls</button>
                 <button @onclick="Pause">@PauseText</button>
                 <button @onclick="AddBall">Add Random Ball</button>
+            </div>
+            
+            <div class="show-user-input-wrapper">
+                <button @onclick="ToggleUserInput" class="show-user-input-button">
+                    <image src="menu.png"></image>
+                </button>
             </div>
         </div>
         
@@ -75,17 +82,18 @@
         }
     }
 
-    private readonly Ballfield _ballfield = new Ballfield();
     private Canvas2DContext _canvasContext;
     private BECanvasComponent _canvasReference;
     private CanvasHelper _canvasHelper;
     private double _fps;
 
+    private readonly Ballfield _ballfield = new();
     
-
-    private int NumberOfBalls => _ballfield.Balls.Count;
     private static string PauseText => EnvironmentalVariables.IsPaused ? "Resume" : "Pause";
-    
+
+    private PhysicsService _physicsService = new();
+    private bool _userInputHidden = true;
+
     protected override void OnInitialized()
     {
     }
@@ -96,21 +104,18 @@
 
         if (firstRender)
         {
-            // Create the canvas and context
             _canvasContext = await _canvasReference.CreateCanvas2DAsync();
-
-            // Initialize the helper
             await _canvasHelper.Initialize();
 
             for (var i = 0; i < initalNumberOfBalls; i++)
             {
                 _ballfield.AddRandmBall();
 
-                _touchedBalls.Add(-1);
-                _touchX.Add(0);
-                _touchXAfter.Add(0);
-                _touchY.Add(0);
-                _touchYAfter.Add(0);
+                _ballfield.TouchedBalls.Add(-1);
+                _ballfield.TouchX.Add(0);
+                _ballfield.TouchXAfter.Add(0);
+                _ballfield.TouchY.Add(0);
+                _ballfield.TouchYAfter.Add(0);
             }
         }
     }
@@ -126,167 +131,14 @@
 
         await UpdateBackground();
 
-        PerformMainCalculations();
+        _physicsService.PerformMainCalculations(_ballfield); // need to exec synchronously for the data to be updated on the ui
 
         await DrawBalls();
 
         await ClearOutterBackground();
 
     }
-
-    // needs moving to core
-    #region Phsyics
     
-    private List<int> _touchedBalls = [];
-    private List<int> _touchX = [];
-    private List<int> _touchY = [];
-    private List<int> _touchXAfter = [];
-    private List<int> _touchYAfter = [];
-
-    private double _deltaT = 0.1;
-
-    private double _deviceTiltX = 0;
-    private double _deviceTiltY = 0.1;
-    
-    private void CalculateTouchedBalls()
-    {
-        // Physics for touched balls
-        for (var i = 0; i < _touchedBalls.Count; i++)
-        {
-            if (_touchedBalls[i] < 0)
-                continue;
-
-            _touchXAfter[i] = _touchX[i];
-            _touchYAfter[i] = _touchY[i];
-
-            var ball = _ballfield.Balls[i];
-
-            if (ball.Mode != 1)
-            {
-                var factor = -0.5 / this._deltaT / 10.0;
-
-                ball.Velocity.X = factor * (ball.X - _touchXAfter[i]);
-                ball.Velocity.Y = factor * (ball.Y - _touchYAfter[i]);
-            }
-            else
-            {
-                ball.X = _touchX[i];
-                ball.Y = _touchY[i];
-            }
-        }
-
-    }
-
-    private void PerformMainCalculations()
-    {
-        CalculateTouchedBalls();
-
-        // Main physics
-        for (int t = 0; t < EnvironmentalVariables.TimeStep; t++)
-        {
-            for (int i = 0; i < NumberOfBalls; i++)
-            {
-                Ball currentBall = _ballfield.Balls[i];
-
-                if (currentBall.Mode != 1)
-                {
-                    currentBall.X += currentBall.Velocity.X * _deltaT;
-                    currentBall.Y += currentBall.Velocity.Y * _deltaT;
-
-                    currentBall.Velocity.X -= currentBall.Velocity.X * EnvironmentalVariables.AirResistance;
-                    currentBall.Velocity.Y -= currentBall.Velocity.Y * EnvironmentalVariables.AirResistance;
-
-                    ReflectOffWalls(currentBall);
-                }
-                else
-                {
-                    currentBall.Velocity.X = 0;
-                    currentBall.Velocity.Y = 0;
-                }
-
-                ApplyBallInteractions(i);
-            }
-
-            BallPhysics.CheckDistance(_ballfield);
-        }
-
-        CalculateGravity();
-    }
-
-    void ReflectOffWalls(Ball currentBall)
-    {
-        if (currentBall.X + currentBall.Radius > _ballfield.Width)
-        {
-            currentBall.Velocity.X *= -EnvironmentalVariables.WallElasticity;
-            currentBall.X = _ballfield.Width - currentBall.Radius;
-        }
-        else if (currentBall.X - currentBall.Radius < 0)
-        {
-            currentBall.Velocity.X *= -EnvironmentalVariables.WallElasticity;
-            currentBall.X = currentBall.Radius;
-        }
-
-        if (currentBall.Y + currentBall.Radius > _ballfield.Height)
-        {
-            currentBall.Velocity.Y *= -EnvironmentalVariables.WallElasticity;
-            currentBall.Y = _ballfield.Height - currentBall.Radius;
-        }
-        else if (currentBall.Y - currentBall.Radius < 0)
-        {
-            currentBall.Velocity.Y *= -EnvironmentalVariables.WallElasticity;
-            currentBall.Y = currentBall.Radius;
-        }
-    }
-
-    void ApplyBallInteractions(int i)
-    {
-        Ball currentBall = _ballfield.Balls[i];
-
-        if (currentBall.Mode == 3 && i != 0)
-        {
-            Ball previousBall = _ballfield.Balls[i - 1];
-            CalculateAndApplyInteraction(currentBall, previousBall);
-        }
-
-        if (currentBall.Mode != 1 && i != NumberOfBalls - 1 && _ballfield.Balls[i + 1].Mode == 3)
-        {
-            // Interaction with the next ball
-            Ball nextBall = _ballfield.Balls[i + 1];
-            CalculateAndApplyInteraction(currentBall, nextBall);
-        }
-    }
-
-    // Function to calculate and apply interactions between two balls
-    static void CalculateAndApplyInteraction(Ball ball1, Ball ball2)
-    {
-        double deltaX = ball1.X - ball2.X;
-        double deltaY = ball1.Y - ball2.Y;
-
-        ball1.Velocity.X -= 0.3 / ball1.Radius * (deltaX - 2 * ball1.Radius * deltaX / Math.Sqrt(deltaX * deltaX + deltaY * deltaY));
-        ball1.Velocity.Y -= 0.3 / ball1.Radius * (deltaY - 2 * ball1.Radius * deltaY / Math.Sqrt(deltaX * deltaX + deltaY * deltaY));
-    }
-
-    private void CalculateGravity()
-    {
-        var gravitationalForceX = _deviceTiltX * EnvironmentalVariables.GravitationalStrength;
-        var gravitationalForceY = _deviceTiltY * EnvironmentalVariables.GravitationalStrength;
-
-        for (var i = 0; i < NumberOfBalls; i++)
-        {
-            if (_ballfield.Balls[i].Mode == 1) continue;
-            
-            _ballfield.Balls[i].Velocity.X += gravitationalForceX;
-            _ballfield.Balls[i].Velocity.Y += gravitationalForceY;
-        }
-    }
-
-    private void DoAccelerometer(Acceleration a)
-    {
-        this._deviceTiltX = -0.1 * a.X;
-        this._deviceTiltY = 0.1 * a.Y;
-    }
-    #endregion
-
     #region CanvasMethods
     private async Task UpdateBackground()
     {
@@ -344,7 +196,7 @@
     #region BallsMethods
     public async Task DrawBalls()
     {
-        for (var i = 0; i < NumberOfBalls; i++)
+        for (var i = 0; i < _ballfield.Balls.Count; i++)
         {
             Ball currentBall = _ballfield.Balls[i];
 
@@ -393,11 +245,7 @@
 
     private void ClearBalls()
     {
-        _ballfield.Balls.Clear();
-        _touchX.Clear();
-        _touchXAfter.Clear();
-        _touchY.Clear();
-        _touchYAfter.Clear();
+        _ballfield.ClearBalls();
     }
     
     private void Pause()
@@ -408,11 +256,11 @@
     private void AddBall()
     {
         _ballfield.AddRandmBall();
-
-        _touchX.Add(0);
-        _touchXAfter.Add(0);
-        _touchY.Add(0);
-        _touchYAfter.Add(0);
+    }
+    
+    private void ToggleUserInput()
+    {
+        _userInputHidden = !_userInputHidden;
     }
     #endregion
 }

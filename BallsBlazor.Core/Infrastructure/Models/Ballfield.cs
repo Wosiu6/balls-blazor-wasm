@@ -5,6 +5,13 @@ namespace BallsBlazor.Core.Infrastructure.Models;
 public class Ballfield
 {
     public readonly List<Ball> Balls = [];
+    
+    public List<int> TouchedBalls = [];
+    public List<int> TouchX = [];
+    public List<int> TouchY = [];
+    public List<int> TouchXAfter = [];
+    public List<int> TouchYAfter = [];
+    
     public double Width { get; private set; }
     public double Height { get; private set; }
 
@@ -34,5 +41,19 @@ public class Ballfield
             radius: radius,
             color: $"#{new Random().Next(0x1000000):X6}"
         ));
+        
+        TouchX.Add(0);
+        TouchY.Add(0);
+        TouchXAfter.Add(0);
+        TouchYAfter.Add(0);
+    }
+    
+    public void ClearBalls()
+    {
+        Balls.Clear();
+        TouchX.Clear();
+        TouchXAfter.Clear();
+        TouchYAfter.Clear();
+        TouchY.Clear();
     }
 }
