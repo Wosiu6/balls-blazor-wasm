@@ -6,10 +6,9 @@ This project is a **physical simulation of bouncing balls**, built with **C\#** 
 
 ## Features
 
-  * **Physics Engine**: Simulates realistic ball collisions and bouncing.
+  * **Physics Engine**: Simulates realistic (not really, it's 2d) ball collisions and bouncing.
   * **Customizable Settings**: Adjust parameters like the number of balls, size, mass, gravity, and elasticity.
   * **Interactive Interface**: A Blazor WASM frontend allows for real-time adjustments and visualization.
-  * **Web-Based**: Accessible directly in your web browser via GitHub Pages.
 
 -----
 
@@ -30,17 +29,4 @@ Check out the live simulation here:
 
 ### Instructions
 
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/wosiu6/balls-blazor-wasm.git
-    cd balls-blazor-wasm
-    ```
-2.  **Build the project**:
-    ```bash
-    dotnet build
-    ```
-3.  **Run the application**:
-    Open the project in an IDE like **JetBrains Rider** or **Visual Studio 2022**, or run from the command line:
-    ```bash
-    dotnet run
-    ```
+You can clone it and run it out of the box in VS2022/Rider provided you have .NET 9 SDK installed. You might need to **install wasm-tools**.
