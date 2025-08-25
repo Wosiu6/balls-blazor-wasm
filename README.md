@@ -29,4 +29,4 @@ Check out the live simulation here:
 
 ### Instructions
 
-You can clone it and run it out of the box in VS2022/Rider provided you have .NET 9 SDK installed. You might need to **install wasm-tools**.
+You can clone it and run it out of the box in VS2022/Rider.
