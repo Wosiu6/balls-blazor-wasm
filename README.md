@@ -6,7 +6,7 @@ This project is a **physical simulation of bouncing balls**, built with **C\#** 
 
 ## Features
 
-  * **Physics Engine**: Simulates realistic (not really, it's 2d) ball collisions and bouncing.
+  * **Physics Engine**: Simulates realistic (not really, it's 2d) ball collisions and bouncing, considering things like wall elasticity, air resistance and gravity.
   * **Customizable Settings**: Adjust parameters like the number of balls, size, mass, gravity, and elasticity.
   * **Interactive Interface**: A Blazor WASM frontend allows for real-time adjustments and visualization.
 
